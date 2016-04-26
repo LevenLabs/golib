@@ -505,7 +505,6 @@ func (g *GenAPI) doSkyAPI() chan struct{} {
 		return nil
 	}
 
-	skyapiAddr = srvclient.MaybeSRV(skyapiAddr)
 	kv := llog.KV{"skyapiAddr": skyapiAddr, "listenAddr": g.ListenAddr}
 	llog.Info("connecting to skyapi", kv)
 	stopCh := make(chan struct{})
