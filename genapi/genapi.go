@@ -121,6 +121,11 @@ var Version string
 // backend, and also houses the connection to that backend (which can be
 // interacted with through its methods)
 type MongoInfo struct {
+	// If you want to make mongo optional, set this and if --mongo-addr isn't
+	// sent, then WithDB, WithColl will call fn with nil and SessionHelper's
+	// session will be nil.
+	Optional bool
+
 	// The name of the mongo database this app should use. In TestMode this will
 	// always be overwritten to "test_<DBName>"
 	DBName string
@@ -134,6 +139,10 @@ type InitFunc func(*GenAPI)
 // WithDB is similar to mgoutil.SessionHelper's WithDB, see those docs for more
 // details
 func (m *MongoInfo) WithDB(fn func(*mgo.Database)) {
+	if m.session == nil {
+		fn(nil)
+		return
+	}
 	mgoutil.SessionHelper{
 		Session: m.session,
 		DB:      m.DBName,
@@ -143,6 +152,10 @@ func (m *MongoInfo) WithDB(fn func(*mgo.Database)) {
 // WithColl is similar to mgoutil.SessionHelper's WithColl, see those docs for
 // more details
 func (m *MongoInfo) WithColl(collName string, fn func(*mgo.Collection)) {
+	if m.session == nil {
+		fn(nil)
+		return
+	}
 	mgoutil.SessionHelper{
 		Session: m.session,
 		DB:      m.DBName,
@@ -151,6 +164,7 @@ func (m *MongoInfo) WithColl(collName string, fn func(*mgo.Collection)) {
 }
 
 // CollSH returns an mgoutil.SessionHelper for a collection of the given name
+// The SessionHelper's Session might be nil if you made mongo Optional.
 func (m *MongoInfo) CollSH(collName string) mgoutil.SessionHelper {
 	return mgoutil.SessionHelper{
 		Session: m.session,
@@ -163,16 +177,26 @@ func (m *MongoInfo) CollSH(collName string) mgoutil.SessionHelper {
 // houses the connection to that backend. If the redis backend is a cluster
 // instance that whole cluster will be connected to
 type RedisInfo struct {
+	// If you want to make redis optional, set this and if --redis-addr isn't
+	// sent, Cmder will be nil.
+	Optional bool
+
 	// Populated by the api once a connection to redis is made, and can be used
 	// as such. Do not set manually.
 	util.Cmder
 }
 
-// OkqInfo is used to tell the api to interact with a set of okq instances, and
-// also houses the Client for those instance.
+// OkqInfo is used to tell the api to interact with a set of okq instances.
 type OkqInfo struct {
-	// Populated by the api once a connection to okq is made, and can be used as
-	// such. Do not set manually
+	// If you want to make okq optional, set this and if --okq-addr isn't sent,
+	// Client will return nil
+	Optional bool
+
+	// Read/Write timeout for redis connection and the NotifyTimeout for Client.
+	// Defaults to 30 seconds
+	// Do not change after initializing GenAPI
+	Timeout time.Duration
+
 	*okq.Client
 }
 
@@ -690,11 +714,17 @@ func (g *GenAPI) initMongo() {
 	}
 
 	mongoAddr, _ := g.ParamStr("--mongo-addr")
+	if mongoAddr == "" && g.MongoInfo.Optional {
+		return
+	}
 	g.MongoInfo.session = mgoutil.EnsureSession(mongoAddr)
 }
 
 func (g *GenAPI) initRedis() {
 	redisAddr, _ := g.ParamStr("--redis-addr")
+	if redisAddr == "" && g.RedisInfo.Optional {
+		return
+	}
 	redisPoolSize, _ := g.ParamInt("--redis-pool-size")
 	kv := llog.KV{
 		"addr":     redisAddr,
@@ -712,15 +742,20 @@ func (g *GenAPI) initRedis() {
 
 func (g *GenAPI) initOkq() {
 	okqAddr, _ := g.ParamStr("--okq-addr")
+	if okqAddr == "" && g.OkqInfo.Optional {
+		return
+	}
 	okqPoolSize, _ := g.ParamInt("--okq-pool-size")
 	kv := llog.KV{
 		"addr":     okqAddr,
 		"poolSize": okqPoolSize,
 	}
 
+	if g.OkqInfo.Timeout == 0 {
+		g.OkqInfo.Timeout = 30 * time.Second
+	}
 	// TODO use GenAPI's srvclient once it has one
-	timeout := 30 * time.Second
-	df := radixutil.SRVDialFunc(srvclient.DefaultSRVClient, timeout)
+	df := radixutil.SRVDialFunc(srvclient.DefaultSRVClient, g.OkqInfo.Timeout)
 
 	llog.Info("connecting to okq", kv)
 	p, err := pool.NewCustom("tcp", okqAddr, okqPoolSize, df)
@@ -728,7 +763,7 @@ func (g *GenAPI) initOkq() {
 		llog.Fatal("error connection to okq", kv, llog.KV{"err": err})
 	}
 
-	g.OkqInfo.Client = &okq.Client{RedisPool: p, NotifyTimeout: timeout}
+	g.OkqInfo.Client = &okq.Client{RedisPool: p, NotifyTimeout: g.OkqInfo.Timeout}
 }
 
 func (g *GenAPI) contextHandler(h http.Handler) http.Handler {
