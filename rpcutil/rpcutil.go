@@ -3,6 +3,7 @@
 package rpcutil
 
 import (
+	"encoding/gob"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +16,10 @@ import (
 	"github.com/levenlabs/go-applicator"
 	"github.com/levenlabs/go-llog"
 )
+
+func init() {
+	gob.Register(&brwMarshalled{})
+}
 
 // A QuietError is a json2.Error except that it will not cause a warn log when
 // returned from a handler
