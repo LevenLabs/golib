@@ -72,13 +72,13 @@ func RequestIP(r *http.Request) string {
 }
 
 func addXForwardedForHelper(dst *http.Request, existing []string, ip string) {
-	var xff string
-	if len(existing) > 0 {
-		xff = strings.Join(existing, ", ") + ", " + ip
-	} else {
-		xff = ip
+	ipp := net.ParseIP(ip)
+	if ipp != nil && !ipp.IsLoopback() {
+		existing = append(existing, ip)
 	}
-	dst.Header.Set("X-Forwarded-For", xff)
+	if len(existing) > 0 {
+		dst.Header.Set("X-Forwarded-For", strings.Join(existing, ", "))
+	}
 }
 
 // AddXForwardedFor populates the X-Forwarded-For header on dst to convey that

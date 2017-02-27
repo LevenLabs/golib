@@ -60,16 +60,18 @@ func TestAddXForwardedFor(t *T) {
 	xffCases := []struct {
 		xffs     []string
 		expected string
+		addr     string
 	}{
-		{xffs: []string{}, expected: "127.0.0.1"},
-		{xffs: []string{"1.1.1.1"}, expected: "1.1.1.1, 127.0.0.1"},
-		{xffs: []string{"1.1.1.1, 2.2.2.2"}, expected: "1.1.1.1, 2.2.2.2, 127.0.0.1"},
-		{xffs: []string{"1.1.1.1, 2.2.2.2", "3.3.3.3"}, expected: "1.1.1.1, 2.2.2.2, 3.3.3.3, 127.0.0.1"},
+		{xffs: []string{}, expected: "", addr: "127.0.0.1:6666"},
+		{xffs: []string{}, expected: "1.1.1.1", addr: "1.1.1.1:6666"},
+		{xffs: []string{"1.1.1.1"}, expected: "1.1.1.1", addr: "127.0.0.1:6666"},
+		{xffs: []string{"1.1.1.1, 2.2.2.2"}, expected: "1.1.1.1, 2.2.2.2", addr: "127.0.0.1:6666"},
+		{xffs: []string{"1.1.1.1, 2.2.2.2", "3.3.3.3"}, expected: "1.1.1.1, 2.2.2.2, 3.3.3.3", addr: "127.0.0.1:6666"},
 	}
 	for _, xffCase := range xffCases {
 		r, err := http.NewRequest("GET", "/", nil)
 		require.Nil(t, err)
-		r.RemoteAddr = "127.0.0.1:6666"
+		r.RemoteAddr = xffCase.addr
 
 		for _, xff := range xffCase.xffs {
 			r.Header.Add("X-Forwarded-For", xff)
